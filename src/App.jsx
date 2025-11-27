@@ -1,11 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { ref, onValue, set, push, get } from 'firebase/database';
+import { ref, onValue, set, get } from 'firebase/database';
 
-// ⚠️ CHANGE THIS PIN to something only your team knows!
-const STORE_PIN = "14613";
+// =====================================================
+// STORE CONFIGURATION - Edit this to add/remove stores
+// =====================================================
+const STORES = [
+  { id: 'laurel', name: 'Laurel', pin: '14613' },
+  { id: 'silverspring', name: 'Silver Spring', pin: '13340' },
+  { id: 'olney', name: 'Olney', pin: '18130' },
+  { id: 'waughchapel', name: 'Waugh Chapel', pin: '2385' },
+  { id: 'odenton', name: 'Odenton', pin: '1496' },
+  { id: 'Arnold', name: 'Arnold', pin: '1450' },
+  // Add more stores here:
+  // { id: 'unique-id', name: 'Store Name', pin: '1234' },
+];
 
 export default function UpSystem() {
+  // Store selection state
+  const [selectedStore, setSelectedStore] = useState(null);
+  const [storeConfig, setStoreConfig] = useState(null);
+  
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -13,15 +28,29 @@ export default function UpSystem() {
 
   // Check if already authenticated this session
   useEffect(() => {
+    const savedStoreId = sessionStorage.getItem('upSystemStoreId');
     const savedAuth = sessionStorage.getItem('upSystemAuth');
-    if (savedAuth === 'true') {
-      setIsAuthenticated(true);
+    
+    if (savedStoreId && savedAuth === 'true') {
+      const store = STORES.find(s => s.id === savedStoreId);
+      if (store) {
+        setSelectedStore(savedStoreId);
+        setStoreConfig(store);
+        setIsAuthenticated(true);
+      }
     }
   }, []);
 
+  // Handle store selection
+  const handleStoreSelect = (store) => {
+    setSelectedStore(store.id);
+    setStoreConfig(store);
+    sessionStorage.setItem('upSystemStoreId', store.id);
+  };
+
   // Handle PIN submission
   const handlePinSubmit = () => {
-    if (pinInput === STORE_PIN) {
+    if (storeConfig && pinInput === storeConfig.pin) {
       setIsAuthenticated(true);
       sessionStorage.setItem('upSystemAuth', 'true');
       setPinError(false);
@@ -29,6 +58,17 @@ export default function UpSystem() {
       setPinError(true);
       setPinInput('');
     }
+  };
+
+  // Go back to store selection
+  const handleChangeStore = () => {
+    setSelectedStore(null);
+    setStoreConfig(null);
+    setIsAuthenticated(false);
+    setPinInput('');
+    setPinError(false);
+    sessionStorage.removeItem('upSystemStoreId');
+    sessionStorage.removeItem('upSystemAuth');
   };
 
   // Setup state
@@ -53,9 +93,14 @@ export default function UpSystem() {
     return () => clearInterval(timer);
   }, []);
 
-  // Subscribe to Firebase data
+  // Subscribe to Firebase data for selected store
   useEffect(() => {
-    const storeRef = ref(db, 'store');
+    if (!selectedStore || !isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
+
+    const storeRef = ref(db, `stores/${selectedStore}`);
     
     const unsubscribe = onValue(storeRef, (snapshot) => {
       const data = snapshot.val();
@@ -67,13 +112,21 @@ export default function UpSystem() {
         setWithCustomer(data.withCustomer || []);
         setHistory(data.history || []);
         setIsSetupComplete(data.isSetupComplete || false);
+      } else {
+        // New store, no data yet
+        setReps([]);
+        setQueue([]);
+        setSteppedAway([]);
+        setWithCustomer([]);
+        setHistory([]);
+        setIsSetupComplete(false);
       }
       
       setIsLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [selectedStore, isAuthenticated]);
 
   // Initialize rep names array when count changes
   useEffect(() => {
@@ -86,9 +139,10 @@ export default function UpSystem() {
     });
   }, [repCount]);
 
-  // Firebase update helper
+  // Firebase update helper - now store-specific
   const updateStore = async (updates) => {
-    const storeRef = ref(db, 'store');
+    if (!selectedStore) return;
+    const storeRef = ref(db, `stores/${selectedStore}`);
     const snapshot = await get(storeRef);
     const currentData = snapshot.val() || {};
     await set(storeRef, { ...currentData, ...updates });
@@ -118,7 +172,7 @@ export default function UpSystem() {
   // Reset the system (for new day/shift)
   const resetSystem = async () => {
     if (window.confirm('This will clear all data and start fresh. Are you sure?')) {
-      await set(ref(db, 'store'), null);
+      await set(ref(db, `stores/${selectedStore}`), null);
       setRepNames([]);
       setSetupStep(1);
     }
@@ -343,13 +397,45 @@ export default function UpSystem() {
     return colors[action] || '#6b7280';
   };
 
-  // PIN Entry Screen
+  // =====================================================
+  // STORE SELECTION SCREEN
+  // =====================================================
+  if (!selectedStore) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.storeSelectScreen}>
+          <div style={styles.logoMark}>↑</div>
+          <h1 style={styles.logoText}>UP SYSTEM</h1>
+          <p style={styles.storeSelectSubtitle}>Select your store</p>
+          
+          <div style={styles.storeList}>
+            {STORES.map(store => (
+              <button
+                key={store.id}
+                onClick={() => handleStoreSelect(store)}
+                style={styles.storeButton}
+              >
+                <span style={styles.storeButtonIcon}>🏪</span>
+                <span style={styles.storeButtonName}>{store.name}</span>
+                <span style={styles.storeButtonArrow}>→</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =====================================================
+  // PIN ENTRY SCREEN
+  // =====================================================
   if (!isAuthenticated) {
     return (
       <div style={styles.container}>
         <div style={styles.pinScreen}>
           <div style={styles.logoMark}>↑</div>
           <h1 style={styles.logoText}>UP SYSTEM</h1>
+          <div style={styles.storeNameBadge}>{storeConfig?.name}</div>
           <p style={styles.pinSubtitle}>Enter PIN to continue</p>
           
           <div style={styles.pinInputContainer}>
@@ -377,6 +463,10 @@ export default function UpSystem() {
           {pinError && (
             <p style={styles.pinErrorText}>Incorrect PIN. Try again.</p>
           )}
+          
+          <button onClick={handleChangeStore} style={styles.changeStoreButton}>
+            ← Different store
+          </button>
         </div>
       </div>
     );
@@ -401,6 +491,7 @@ export default function UpSystem() {
         <div style={styles.setupHeader}>
           <div style={styles.logoMark}>↑</div>
           <h1 style={styles.logoText}>UP SYSTEM</h1>
+          <div style={styles.storeNameBadge}>{storeConfig?.name}</div>
           <p style={styles.setupSubtitle}>Let's set up your shift</p>
         </div>
         
@@ -431,6 +522,10 @@ export default function UpSystem() {
           style={styles.setupButton}
         >
           NEXT →
+        </button>
+        
+        <button onClick={handleChangeStore} style={styles.changeStoreButtonAlt}>
+          ← Different store
         </button>
       </div>
     );
@@ -500,7 +595,7 @@ export default function UpSystem() {
         <div style={styles.headerLeft}>
           <div style={styles.logoSmall}>↑</div>
           <div>
-            <div style={styles.userName}>Up System</div>
+            <div style={styles.userName}>{storeConfig?.name}</div>
             <div style={styles.userStatus}>
               {queue.length} of {reps.length} reps checked in
             </div>
@@ -648,6 +743,13 @@ export default function UpSystem() {
                 Clear Day
               </button>
               <p style={styles.clearDayHint}>Reset all check-ins and start fresh</p>
+            </div>
+            
+            {/* Change Store */}
+            <div style={styles.changeStoreSection}>
+              <button onClick={handleChangeStore} style={styles.changeStoreButtonSmall}>
+                Switch Store
+              </button>
             </div>
           </div>
         )}
@@ -887,6 +989,53 @@ const styles = {
     marginTop: '1rem',
   },
   
+  // Store selection styles
+  storeSelectScreen: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '100vh',
+    padding: '2rem',
+  },
+  storeSelectSubtitle: {
+    color: '#64748b',
+    marginTop: '1rem',
+    marginBottom: '2rem',
+    fontSize: '1rem',
+  },
+  storeList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+    width: '100%',
+    maxWidth: '320px',
+  },
+  storeButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+    padding: '1rem 1.25rem',
+    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '12px',
+    color: '#f8fafc',
+    fontSize: '1rem',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    textAlign: 'left',
+  },
+  storeButtonIcon: {
+    fontSize: '1.5rem',
+  },
+  storeButtonName: {
+    flex: 1,
+    fontWeight: '500',
+  },
+  storeButtonArrow: {
+    color: '#64748b',
+  },
+  
   // PIN screen styles
   pinScreen: {
     display: 'flex',
@@ -896,10 +1045,20 @@ const styles = {
     minHeight: '100vh',
     padding: '2rem',
   },
+  storeNameBadge: {
+    marginTop: '1rem',
+    padding: '0.5rem 1rem',
+    background: 'rgba(34, 211, 238, 0.1)',
+    border: '1px solid rgba(34, 211, 238, 0.2)',
+    borderRadius: '20px',
+    color: '#22d3ee',
+    fontSize: '0.875rem',
+    fontWeight: '500',
+  },
   pinSubtitle: {
     color: '#64748b',
-    marginTop: '1rem',
-    marginBottom: '2rem',
+    marginTop: '1.5rem',
+    marginBottom: '1.5rem',
     fontSize: '1rem',
   },
   pinInputContainer: {
@@ -922,7 +1081,6 @@ const styles = {
   },
   pinInputError: {
     borderColor: 'rgba(239, 68, 68, 0.5)',
-    animation: 'shake 0.3s ease-in-out',
   },
   pinButton: {
     padding: '1rem 1.5rem',
@@ -938,6 +1096,40 @@ const styles = {
     color: '#ef4444',
     marginTop: '1rem',
     fontSize: '0.875rem',
+  },
+  changeStoreButton: {
+    marginTop: '2rem',
+    padding: '0.75rem 1rem',
+    background: 'transparent',
+    border: 'none',
+    color: '#64748b',
+    fontSize: '0.875rem',
+    cursor: 'pointer',
+  },
+  changeStoreButtonAlt: {
+    display: 'block',
+    width: '100%',
+    padding: '1rem',
+    marginTop: '0.5rem',
+    background: 'transparent',
+    border: 'none',
+    color: '#64748b',
+    fontSize: '0.875rem',
+    cursor: 'pointer',
+    textAlign: 'center',
+  },
+  changeStoreSection: {
+    marginTop: '1.5rem',
+    textAlign: 'center',
+  },
+  changeStoreButtonSmall: {
+    padding: '0.5rem 1rem',
+    background: 'transparent',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '8px',
+    color: '#64748b',
+    fontSize: '0.75rem',
+    cursor: 'pointer',
   },
   
   // Setup styles
