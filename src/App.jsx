@@ -2,7 +2,35 @@ import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
 import { ref, onValue, set, push, get } from 'firebase/database';
 
+// ⚠️ CHANGE THIS PIN to something only your team knows!
+const STORE_PIN = "14613";
+
 export default function UpSystem() {
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
+
+  // Check if already authenticated this session
+  useEffect(() => {
+    const savedAuth = sessionStorage.getItem('upSystemAuth');
+    if (savedAuth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  // Handle PIN submission
+  const handlePinSubmit = () => {
+    if (pinInput === STORE_PIN) {
+      setIsAuthenticated(true);
+      sessionStorage.setItem('upSystemAuth', 'true');
+      setPinError(false);
+    } else {
+      setPinError(true);
+      setPinInput('');
+    }
+  };
+
   // Setup state
   const [isLoading, setIsLoading] = useState(true);
   const [isSetupComplete, setIsSetupComplete] = useState(false);
@@ -314,6 +342,45 @@ export default function UpSystem() {
     };
     return colors[action] || '#6b7280';
   };
+
+  // PIN Entry Screen
+  if (!isAuthenticated) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.pinScreen}>
+          <div style={styles.logoMark}>↑</div>
+          <h1 style={styles.logoText}>UP SYSTEM</h1>
+          <p style={styles.pinSubtitle}>Enter PIN to continue</p>
+          
+          <div style={styles.pinInputContainer}>
+            <input
+              type="password"
+              value={pinInput}
+              onChange={(e) => {
+                setPinInput(e.target.value);
+                setPinError(false);
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && handlePinSubmit()}
+              placeholder="••••"
+              style={{
+                ...styles.pinInput,
+                ...(pinError ? styles.pinInputError : {})
+              }}
+              maxLength={10}
+              autoFocus
+            />
+            <button onClick={handlePinSubmit} style={styles.pinButton}>
+              Enter
+            </button>
+          </div>
+          
+          {pinError && (
+            <p style={styles.pinErrorText}>Incorrect PIN. Try again.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Loading screen
   if (isLoading) {
@@ -818,6 +885,59 @@ const styles = {
   loadingText: {
     color: '#64748b',
     marginTop: '1rem',
+  },
+  
+  // PIN screen styles
+  pinScreen: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '100vh',
+    padding: '2rem',
+  },
+  pinSubtitle: {
+    color: '#64748b',
+    marginTop: '1rem',
+    marginBottom: '2rem',
+    fontSize: '1rem',
+  },
+  pinInputContainer: {
+    display: 'flex',
+    gap: '0.75rem',
+    width: '100%',
+    maxWidth: '280px',
+  },
+  pinInput: {
+    flex: 1,
+    padding: '1rem',
+    background: 'rgba(255,255,255,0.05)',
+    border: '2px solid rgba(255,255,255,0.1)',
+    borderRadius: '12px',
+    color: '#f8fafc',
+    fontSize: '1.5rem',
+    textAlign: 'center',
+    letterSpacing: '0.25em',
+    outline: 'none',
+  },
+  pinInputError: {
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+    animation: 'shake 0.3s ease-in-out',
+  },
+  pinButton: {
+    padding: '1rem 1.5rem',
+    background: 'linear-gradient(135deg, #22d3ee 0%, #0891b2 100%)',
+    border: 'none',
+    borderRadius: '12px',
+    color: '#0f172a',
+    fontSize: '1rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+  },
+  pinErrorText: {
+    color: '#ef4444',
+    marginTop: '1rem',
+    fontSize: '0.875rem',
   },
   
   // Setup styles
