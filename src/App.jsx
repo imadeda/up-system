@@ -107,6 +107,36 @@ export default function UpSystem() {
     await updateStore({ reps: [...reps, newRep] });
   };
 
+  // Remove a rep from the schedule entirely
+  const removeRep = async (repId) => {
+    const rep = reps.find(r => r.id === repId);
+    if (!window.confirm(`Remove ${rep?.name} from today's schedule?`)) return;
+    
+    const newReps = reps.filter(r => r.id !== repId);
+    const newQueue = queue.filter(id => id !== repId);
+    const newSteppedAway = steppedAway.filter(id => id !== repId);
+    const newWithCustomer = withCustomer.filter(id => id !== repId);
+    
+    await updateStore({ 
+      reps: newReps,
+      queue: newQueue, 
+      steppedAway: newSteppedAway, 
+      withCustomer: newWithCustomer 
+    });
+  };
+
+  // Clear day - reset queue but keep reps on schedule
+  const clearDay = async () => {
+    if (!window.confirm('Clear all check-ins and start fresh? (Reps will stay on the schedule)')) return;
+    
+    await updateStore({ 
+      queue: [], 
+      steppedAway: [], 
+      withCustomer: [],
+      history: []
+    });
+  };
+
   // Check a rep into the queue
   const checkInRep = async (repId) => {
     if (!queue.includes(repId)) {
@@ -512,12 +542,21 @@ export default function UpSystem() {
                     </div>
                     <div style={styles.homeCardActions}>
                       {!isCheckedIn ? (
-                        <button 
-                          onClick={() => checkInRep(rep.id)}
-                          style={styles.checkInButton}
-                        >
-                          Check In
-                        </button>
+                        <>
+                          <button 
+                            onClick={() => checkInRep(rep.id)}
+                            style={styles.checkInButton}
+                          >
+                            Check In
+                          </button>
+                          <button 
+                            onClick={() => removeRep(rep.id)}
+                            style={styles.removeRepButton}
+                            title="Remove from schedule"
+                          >
+                            ✕
+                          </button>
+                        </>
                       ) : (
                         <button 
                           onClick={() => checkOutRep(rep.id)}
@@ -534,6 +573,14 @@ export default function UpSystem() {
 
             <div style={styles.addRepSectionInline}>
               <AddRepForm onAdd={addNewRep} />
+            </div>
+
+            {/* Clear Day Button */}
+            <div style={styles.clearDaySection}>
+              <button onClick={clearDay} style={styles.clearDayButton}>
+                Clear Day
+              </button>
+              <p style={styles.clearDayHint}>Reset all check-ins and start fresh</p>
             </div>
           </div>
         )}
@@ -1111,6 +1158,9 @@ const styles = {
   },
   homeCardActions: {
     flexShrink: 0,
+    display: 'flex',
+    gap: '0.5rem',
+    alignItems: 'center',
   },
   checkInButton: {
     padding: '0.5rem 1rem',
@@ -1131,6 +1181,41 @@ const styles = {
     fontSize: '0.8125rem',
     fontWeight: '600',
     cursor: 'pointer',
+  },
+  removeRepButton: {
+    width: '32px',
+    height: '32px',
+    padding: 0,
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '8px',
+    color: '#64748b',
+    fontSize: '0.875rem',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearDaySection: {
+    marginTop: '2rem',
+    paddingTop: '1.5rem',
+    borderTop: '1px solid rgba(255,255,255,0.05)',
+    textAlign: 'center',
+  },
+  clearDayButton: {
+    padding: '0.75rem 1.5rem',
+    background: 'rgba(239, 68, 68, 0.1)',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
+    borderRadius: '10px',
+    color: '#ef4444',
+    fontSize: '0.875rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  clearDayHint: {
+    fontSize: '0.75rem',
+    color: '#64748b',
+    marginTop: '0.5rem',
   },
   statusUp: {
     color: '#22d3ee',
