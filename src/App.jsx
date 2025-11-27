@@ -146,11 +146,11 @@ export default function UpSystem() {
   const activeQueue = queue.filter(id => !steppedAway.includes(id) && !withCustomer.includes(id));
   const upRep = activeQueue.length > 0 ? reps.find(r => r.id === activeQueue[0]) : null;
 
-  // Take a customer (for the rep who is "up")
+  // Take a customer (for the rep who is "up" - marks them as with customer)
   const takeCustomer = async (repId) => {
     if (activeQueue[0] === repId) {
-      const newQueue = queue.filter(id => id !== repId);
-      newQueue.push(repId);
+      // Mark them as with customer (same as markWithCustomer)
+      const newWithCustomer = [...withCustomer, repId];
       const newHistory = [{
         id: Date.now(),
         repId,
@@ -158,7 +158,10 @@ export default function UpSystem() {
         action: 'took_customer',
         timestamp: new Date().toISOString()
       }, ...history];
-      await updateStore({ queue: newQueue, history: newHistory });
+      await updateStore({ 
+        withCustomer: newWithCustomer, 
+        history: newHistory 
+      });
     }
   };
 
