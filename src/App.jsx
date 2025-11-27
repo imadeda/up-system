@@ -405,7 +405,7 @@ export default function UpSystem() {
       <div style={styles.container}>
         <div style={styles.storeSelectScreen}>
           <div style={styles.logoMark}>↑</div>
-          <h1 style={styles.logoText}>UP SYSTEM</h1>
+          <h1 style={styles.logoText}>WHO'S UP NEXT?</h1>
           <p style={styles.storeSelectSubtitle}>Select your store</p>
           
           <div style={styles.storeList}>
@@ -434,7 +434,7 @@ export default function UpSystem() {
       <div style={styles.container}>
         <div style={styles.pinScreen}>
           <div style={styles.logoMark}>↑</div>
-          <h1 style={styles.logoText}>UP SYSTEM</h1>
+          <h1 style={styles.logoText}>WHO'S UP NEXT?</h1>
           <div style={styles.storeNameBadge}>{storeConfig?.name}</div>
           <p style={styles.pinSubtitle}>Enter PIN to continue</p>
           
@@ -490,7 +490,7 @@ export default function UpSystem() {
       <div style={styles.container}>
         <div style={styles.setupHeader}>
           <div style={styles.logoMark}>↑</div>
-          <h1 style={styles.logoText}>UP SYSTEM</h1>
+          <h1 style={styles.logoText}>WHO'S UP NEXT?</h1>
           <div style={styles.storeNameBadge}>{storeConfig?.name}</div>
           <p style={styles.setupSubtitle}>Let's set up your shift</p>
         </div>
