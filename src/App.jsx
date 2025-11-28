@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from './firebase';
 import { ref, onValue, set, get } from 'firebase/database';
 
@@ -6,15 +6,21 @@ import { ref, onValue, set, get } from 'firebase/database';
 // STORE CONFIGURATION - Edit this to add/remove stores
 // =====================================================
 const STORES = [
-  { id: 'laurel', name: 'Laurel', pin: '14613' },
-  { id: 'silverspring', name: 'Silver Spring', pin: '13340' },
-  { id: 'olney', name: 'Olney', pin: '18130' },
-  { id: 'waughchapel', name: 'Waugh Chapel', pin: '2385' },
-  { id: 'odenton', name: 'Odenton', pin: '1496' },
-  { id: 'Arnold', name: 'Arnold', pin: '1450' },
+  { id: 'downtown', name: 'Downtown', pin: '1234' },
+  { id: 'mall', name: 'Mall Location', pin: '5678' },
+  { id: 'westside', name: 'Westside', pin: '9012' },
   // Add more stores here:
   // { id: 'unique-id', name: 'Store Name', pin: '1234' },
 ];
+
+// =====================================================
+// AUTO-RESET CONFIGURATION
+// Set the time when the queue automatically resets each day
+// Format: { hour: 0-23, minute: 0-59 }
+// Example: { hour: 21, minute: 0 } = 9:00 PM
+// Set to null to disable auto-reset
+// =====================================================
+const AUTO_RESET_TIME = { hour: 21, minute: 0 }; // 9:00 PM
 
 export default function UpSystem() {
   // Store selection state
@@ -84,14 +90,53 @@ export default function UpSystem() {
   const [steppedAway, setSteppedAway] = useState([]);
   const [withCustomer, setWithCustomer] = useState([]);
   const [history, setHistory] = useState([]);
+  const [lastResetDate, setLastResetDate] = useState(null);
   const [view, setView] = useState('home');
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Drag and drop state
+  const [draggedRep, setDraggedRep] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const dragNode = useRef(null);
 
   // Update clock
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Auto-reset check
+  useEffect(() => {
+    if (!AUTO_RESET_TIME || !selectedStore || !isAuthenticated || !isSetupComplete) return;
+
+    const checkAutoReset = async () => {
+      const now = new Date();
+      const today = now.toDateString();
+      
+      // Check if it's past reset time and we haven't reset today
+      if (
+        now.getHours() > AUTO_RESET_TIME.hour ||
+        (now.getHours() === AUTO_RESET_TIME.hour && now.getMinutes() >= AUTO_RESET_TIME.minute)
+      ) {
+        if (lastResetDate !== today) {
+          // Perform auto-reset
+          await updateStore({
+            queue: [],
+            steppedAway: [],
+            withCustomer: [],
+            history: [],
+            lastResetDate: today
+          });
+          console.log('Auto-reset performed at', now.toLocaleTimeString());
+        }
+      }
+    };
+
+    // Check immediately and then every minute
+    checkAutoReset();
+    const interval = setInterval(checkAutoReset, 60000);
+    return () => clearInterval(interval);
+  }, [selectedStore, isAuthenticated, isSetupComplete, lastResetDate]);
 
   // Subscribe to Firebase data for selected store
   useEffect(() => {
@@ -111,6 +156,7 @@ export default function UpSystem() {
         setSteppedAway(data.steppedAway || []);
         setWithCustomer(data.withCustomer || []);
         setHistory(data.history || []);
+        setLastResetDate(data.lastResetDate || null);
         setIsSetupComplete(data.isSetupComplete || false);
       } else {
         // New store, no data yet
@@ -119,6 +165,7 @@ export default function UpSystem() {
         setSteppedAway([]);
         setWithCustomer([]);
         setHistory([]);
+        setLastResetDate(null);
         setIsSetupComplete(false);
       }
       
@@ -337,6 +384,76 @@ export default function UpSystem() {
     }
   };
 
+  // Drag and drop handlers for queue reordering
+  const handleDragStart = (e, index, repId) => {
+    dragNode.current = e.target;
+    setDraggedRep({ index, repId });
+    
+    // Add drag styling after a brief delay (allows drag image to be captured)
+    setTimeout(() => {
+      if (dragNode.current) {
+        dragNode.current.style.opacity = '0.5';
+      }
+    }, 0);
+  };
+
+  const handleDragEnter = (e, index) => {
+    e.preventDefault();
+    if (draggedRep && draggedRep.index !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDragLeave = (e) => {
+    // Only clear if leaving the container, not entering a child
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setDragOverIndex(null);
+    }
+  };
+
+  const handleDragEnd = () => {
+    if (dragNode.current) {
+      dragNode.current.style.opacity = '1';
+    }
+    setDraggedRep(null);
+    setDragOverIndex(null);
+    dragNode.current = null;
+  };
+
+  const handleDrop = async (e, targetIndex) => {
+    e.preventDefault();
+    
+    if (!draggedRep || draggedRep.index === targetIndex) {
+      handleDragEnd();
+      return;
+    }
+
+    // Reorder the active queue
+    const newActiveQueue = [...activeQueue];
+    const [movedRep] = newActiveQueue.splice(draggedRep.index, 1);
+    newActiveQueue.splice(targetIndex, 0, movedRep);
+
+    // Rebuild the full queue: active queue + stepped away (preserving stepped away at their positions)
+    // Actually, we need to rebuild based on the new active order
+    const newQueue = [...newActiveQueue, ...steppedAway.filter(id => queue.includes(id))];
+
+    const movedRepName = reps.find(r => r.id === draggedRep.repId)?.name || 'Unknown';
+    const newHistory = [{
+      id: Date.now(),
+      repId: draggedRep.repId,
+      repName: movedRepName,
+      action: 'reordered',
+      timestamp: new Date().toISOString()
+    }, ...history];
+
+    await updateStore({ queue: newQueue, history: newHistory });
+    handleDragEnd();
+  };
+
   // Calculate stats
   const getStats = () => {
     const customersTaken = {};
@@ -379,7 +496,8 @@ export default function UpSystem() {
       'stepped_away': 'Stepped away',
       'returned': 'Returned',
       'with_customer': 'Helping customer',
-      'finished_customer': 'Finished with customer'
+      'finished_customer': 'Finished with customer',
+      'reordered': 'Moved in queue'
     };
     return actions[action] || action;
   };
@@ -392,7 +510,8 @@ export default function UpSystem() {
       'stepped_away': '#f59e0b',
       'returned': '#22c55e',
       'with_customer': '#8b5cf6',
-      'finished_customer': '#22c55e'
+      'finished_customer': '#22c55e',
+      'reordered': '#64748b'
     };
     return colors[action] || '#6b7280';
   };
@@ -405,7 +524,7 @@ export default function UpSystem() {
       <div style={styles.container}>
         <div style={styles.storeSelectScreen}>
           <div style={styles.logoMark}>↑</div>
-          <h1 style={styles.logoText}>WHO'S UP NEXT?</h1>
+          <h1 style={styles.logoText}>UP SYSTEM</h1>
           <p style={styles.storeSelectSubtitle}>Select your store</p>
           
           <div style={styles.storeList}>
@@ -434,7 +553,7 @@ export default function UpSystem() {
       <div style={styles.container}>
         <div style={styles.pinScreen}>
           <div style={styles.logoMark}>↑</div>
-          <h1 style={styles.logoText}>WHO'S UP NEXT?</h1>
+          <h1 style={styles.logoText}>UP SYSTEM</h1>
           <div style={styles.storeNameBadge}>{storeConfig?.name}</div>
           <p style={styles.pinSubtitle}>Enter PIN to continue</p>
           
@@ -490,7 +609,7 @@ export default function UpSystem() {
       <div style={styles.container}>
         <div style={styles.setupHeader}>
           <div style={styles.logoMark}>↑</div>
-          <h1 style={styles.logoText}>WHO'S UP NEXT?</h1>
+          <h1 style={styles.logoText}>UP SYSTEM</h1>
           <div style={styles.storeNameBadge}>{storeConfig?.name}</div>
           <p style={styles.setupSubtitle}>Let's set up your shift</p>
         </div>
@@ -791,18 +910,35 @@ export default function UpSystem() {
                 {/* Active Queue */}
                 {activeQueue.length > 0 && (
                   <div style={styles.queueList}>
-                    <div style={styles.queueSectionTitle}>In Queue</div>
+                    <div style={styles.queueSectionHeader}>
+                      <div style={styles.queueSectionTitle}>In Queue</div>
+                      <div style={styles.queueDragHint}>↕ Drag to reorder</div>
+                    </div>
                     {activeQueue.map((repId, index) => {
                       const rep = reps.find(r => r.id === repId);
                       const isFirst = index === 0;
+                      const isDragging = draggedRep?.index === index;
+                      const isDragOver = dragOverIndex === index;
+                      
                       return (
                         <div 
-                          key={repId} 
+                          key={repId}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, index, repId)}
+                          onDragEnter={(e) => handleDragEnter(e, index)}
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDragEnd={handleDragEnd}
+                          onDrop={(e) => handleDrop(e, index)}
                           style={{
                             ...styles.queueItem,
-                            ...(isFirst ? styles.queueItemUp : {})
+                            ...(isFirst ? styles.queueItemUp : {}),
+                            ...(isDragging ? styles.queueItemDragging : {}),
+                            ...(isDragOver && !isDragging ? styles.queueItemDragOver : {}),
+                            cursor: 'grab'
                           }}
                         >
+                          <div style={styles.dragHandle}>⋮⋮</div>
                           <div style={styles.queuePosition}>{index + 1}</div>
                           <div style={{
                             ...styles.queueAvatar,
@@ -1602,25 +1738,54 @@ const styles = {
     flexDirection: 'column',
     gap: '0.5rem',
   },
+  queueSectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '0.5rem',
+  },
   queueSectionTitle: {
     fontSize: '0.75rem',
     color: '#64748b',
     textTransform: 'uppercase',
     letterSpacing: '0.1em',
-    marginBottom: '0.5rem',
+  },
+  queueDragHint: {
+    fontSize: '0.6875rem',
+    color: '#475569',
+    fontStyle: 'italic',
   },
   queueItem: {
     display: 'flex',
     alignItems: 'center',
-    gap: '1rem',
+    gap: '0.75rem',
     padding: '1rem',
     background: 'rgba(255,255,255,0.02)',
     borderRadius: '12px',
     border: '1px solid rgba(255,255,255,0.05)',
+    transition: 'transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease',
+    userSelect: 'none',
   },
   queueItemUp: {
     background: 'rgba(34, 211, 238, 0.1)',
     borderColor: 'rgba(34, 211, 238, 0.2)',
+  },
+  queueItemDragging: {
+    opacity: 0.5,
+    transform: 'scale(1.02)',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+  },
+  queueItemDragOver: {
+    borderColor: '#22d3ee',
+    borderStyle: 'dashed',
+    background: 'rgba(34, 211, 238, 0.05)',
+  },
+  dragHandle: {
+    color: '#475569',
+    fontSize: '0.875rem',
+    cursor: 'grab',
+    padding: '0 0.25rem',
+    letterSpacing: '-0.1em',
   },
   queuePosition: {
     width: '28px',
