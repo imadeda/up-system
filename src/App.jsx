@@ -457,6 +457,72 @@ export default function UpSystem() {
     handleDragEnd();
   };
 
+  // Touch handlers for mobile drag and drop
+  const touchStartY = useRef(null);
+  const touchCurrentIndex = useRef(null);
+  const queueItemRefs = useRef([]);
+
+  const handleTouchStart = (e, index, repId) => {
+    const touch = e.touches[0];
+    touchStartY.current = touch.clientY;
+    touchCurrentIndex.current = index;
+    setDraggedRep({ index, repId });
+    
+    // Prevent scrolling while dragging
+    document.body.style.overflow = 'hidden';
+  };
+
+  const handleTouchMove = (e, index) => {
+    if (!draggedRep) return;
+    
+    const touch = e.touches[0];
+    const currentY = touch.clientY;
+    
+    // Find which item we're hovering over
+    let newIndex = null;
+    queueItemRefs.current.forEach((ref, i) => {
+      if (ref) {
+        const rect = ref.getBoundingClientRect();
+        if (currentY >= rect.top && currentY <= rect.bottom) {
+          newIndex = i;
+        }
+      }
+    });
+    
+    if (newIndex !== null && newIndex !== draggedRep.index) {
+      setDragOverIndex(newIndex);
+    }
+  };
+
+  const handleTouchEnd = async () => {
+    document.body.style.overflow = '';
+    
+    if (draggedRep && dragOverIndex !== null && dragOverIndex !== draggedRep.index) {
+      // Perform the reorder
+      const newActiveQueue = [...activeQueue];
+      const [movedRep] = newActiveQueue.splice(draggedRep.index, 1);
+      newActiveQueue.splice(dragOverIndex, 0, movedRep);
+
+      const newQueue = [...newActiveQueue, ...steppedAway.filter(id => queue.includes(id))];
+
+      const movedRepName = reps.find(r => r.id === draggedRep.repId)?.name || 'Unknown';
+      const newHistory = [{
+        id: Date.now(),
+        repId: draggedRep.repId,
+        repName: movedRepName,
+        action: 'reordered',
+        timestamp: new Date().toISOString()
+      }, ...history];
+
+      await updateStore({ queue: newQueue, history: newHistory });
+    }
+    
+    setDraggedRep(null);
+    setDragOverIndex(null);
+    touchStartY.current = null;
+    touchCurrentIndex.current = null;
+  };
+
   // Calculate stats
   const getStats = () => {
     const customersTaken = {};
@@ -915,7 +981,7 @@ export default function UpSystem() {
                   <div style={styles.queueList}>
                     <div style={styles.queueSectionHeader}>
                       <div style={styles.queueSectionTitle}>In Queue</div>
-                      <div style={styles.queueDragHint}>↕ Drag to reorder</div>
+                      <div style={styles.queueDragHint}>↕ Hold & drag to reorder</div>
                     </div>
                     {activeQueue.map((repId, index) => {
                       const rep = reps.find(r => r.id === repId);
@@ -926,6 +992,7 @@ export default function UpSystem() {
                       return (
                         <div 
                           key={repId}
+                          ref={(el) => queueItemRefs.current[index] = el}
                           draggable
                           onDragStart={(e) => handleDragStart(e, index, repId)}
                           onDragEnter={(e) => handleDragEnter(e, index)}
@@ -933,6 +1000,9 @@ export default function UpSystem() {
                           onDragLeave={handleDragLeave}
                           onDragEnd={handleDragEnd}
                           onDrop={(e) => handleDrop(e, index)}
+                          onTouchStart={(e) => handleTouchStart(e, index, repId)}
+                          onTouchMove={(e) => handleTouchMove(e, index)}
+                          onTouchEnd={handleTouchEnd}
                           style={{
                             ...styles.queueItem,
                             ...(isFirst ? styles.queueItemUp : {}),
