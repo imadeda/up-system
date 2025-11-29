@@ -6,9 +6,12 @@ import { ref, onValue, set, get } from 'firebase/database';
 // STORE CONFIGURATION - Edit this to add/remove stores
 // =====================================================
 const STORES = [
-  { id: 'downtown', name: 'Downtown', pin: '1234' },
-  { id: 'mall', name: 'Mall Location', pin: '5678' },
-  { id: 'westside', name: 'Westside', pin: '9012' },
+  { id: 'arnold', name: 'Arnold', pin: '1450' },
+  { id: 'laurel', name: 'Laurel', pin: '14613' },
+  { id: 'odenton', name: 'Odenton', pin: '1496' },
+  { id: 'olney', name: 'Olney', pin: '18130' },
+  { id: 'silver-spring', name: 'Silver Spring', pin: '13340' },
+  { id: 'waugh-chapel', name: 'Waugh Chapel', pin: '2385' },
   // Add more stores here:
   // { id: 'unique-id', name: 'Store Name', pin: '1234' },
 ];
@@ -524,7 +527,7 @@ export default function UpSystem() {
       <div style={styles.container}>
         <div style={styles.storeSelectScreen}>
           <div style={styles.logoMark}>↑</div>
-          <h1 style={styles.logoText}>UP SYSTEM</h1>
+          <h1 style={styles.logoText}>WHO'S UP NEXT?</h1>
           <p style={styles.storeSelectSubtitle}>Select your store</p>
           
           <div style={styles.storeList}>
@@ -553,7 +556,7 @@ export default function UpSystem() {
       <div style={styles.container}>
         <div style={styles.pinScreen}>
           <div style={styles.logoMark}>↑</div>
-          <h1 style={styles.logoText}>UP SYSTEM</h1>
+          <h1 style={styles.logoText}>WHO'S UP NEXT?</h1>
           <div style={styles.storeNameBadge}>{storeConfig?.name}</div>
           <p style={styles.pinSubtitle}>Enter PIN to continue</p>
           
@@ -609,7 +612,7 @@ export default function UpSystem() {
       <div style={styles.container}>
         <div style={styles.setupHeader}>
           <div style={styles.logoMark}>↑</div>
-          <h1 style={styles.logoText}>UP SYSTEM</h1>
+          <h1 style={styles.logoText}>WHO'S UP NEXT?</h1>
           <div style={styles.storeNameBadge}>{storeConfig?.name}</div>
           <p style={styles.setupSubtitle}>Let's set up your shift</p>
         </div>
