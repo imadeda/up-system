@@ -4,16 +4,17 @@ import { ref, onValue, set, get } from 'firebase/database';
 
 // =====================================================
 // STORE CONFIGURATION - Edit this to add/remove stores
+// Each store has a managerPin (full access) and viewerPin (limited access)
 // =====================================================
 const STORES = [
-  { id: 'arnold', name: 'Arnold', pin: '1450' },
-  { id: 'laurel', name: 'Laurel', pin: '14613' },
-  { id: 'odenton', name: 'Odenton', pin: '1496' },
-  { id: 'olney', name: 'Olney', pin: '18130' },
-  { id: 'silver-spring', name: 'Silver Spring', pin: '13340' },
-  { id: 'waugh-chapel', name: 'Waugh Chapel', pin: '2385' },
+  { id: 'arnold', name: 'Arnold', managerPin: '90210', viewerPin: '1450' },
+  { id: 'laurel', name: 'Laurel', managerPin: '90210', viewerPin: '14613' },
+  { id: 'odenton', name: 'Odenton', managerPin: '90210', viewerPin: '1496' },
+  { id: 'olney', name: 'Olney', managerPin: '90210', viewerPin: '18130' },
+  { id: 'silver-spring', name: 'Silver Spring', managerPin: '90210', viewerPin: '13340' },
+  { id: 'waugh-chapel', name: 'Waugh Chapel', managerPin: '90210', viewerPin: '2385' },
   // Add more stores here:
-  // { id: 'unique-id', name: 'Store Name', pin: '1234' },
+  // { id: 'unique-id', name: 'Store Name', managerPin: '90210', viewerPin: '1234' },
 ];
 
 // =====================================================
@@ -32,6 +33,7 @@ export default function UpSystem() {
   
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState(null); // 'manager' or 'viewer'
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
 
@@ -39,13 +41,15 @@ export default function UpSystem() {
   useEffect(() => {
     const savedStoreId = sessionStorage.getItem('upSystemStoreId');
     const savedAuth = sessionStorage.getItem('upSystemAuth');
+    const savedRole = sessionStorage.getItem('upSystemRole');
     
-    if (savedStoreId && savedAuth === 'true') {
+    if (savedStoreId && savedAuth === 'true' && savedRole) {
       const store = STORES.find(s => s.id === savedStoreId);
       if (store) {
         setSelectedStore(savedStoreId);
         setStoreConfig(store);
         setIsAuthenticated(true);
+        setUserRole(savedRole);
       }
     }
   }, []);
@@ -59,9 +63,19 @@ export default function UpSystem() {
 
   // Handle PIN submission
   const handlePinSubmit = () => {
-    if (storeConfig && pinInput === storeConfig.pin) {
+    if (!storeConfig) return;
+    
+    if (pinInput === storeConfig.managerPin) {
       setIsAuthenticated(true);
+      setUserRole('manager');
       sessionStorage.setItem('upSystemAuth', 'true');
+      sessionStorage.setItem('upSystemRole', 'manager');
+      setPinError(false);
+    } else if (pinInput === storeConfig.viewerPin) {
+      setIsAuthenticated(true);
+      setUserRole('viewer');
+      sessionStorage.setItem('upSystemAuth', 'true');
+      sessionStorage.setItem('upSystemRole', 'viewer');
       setPinError(false);
     } else {
       setPinError(true);
@@ -74,11 +88,26 @@ export default function UpSystem() {
     setSelectedStore(null);
     setStoreConfig(null);
     setIsAuthenticated(false);
+    setUserRole(null);
     setPinInput('');
     setPinError(false);
     sessionStorage.removeItem('upSystemStoreId');
     sessionStorage.removeItem('upSystemAuth');
+    sessionStorage.removeItem('upSystemRole');
   };
+
+  // Logout (stay on same store but go to PIN screen)
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setUserRole(null);
+    setPinInput('');
+    setPinError(false);
+    sessionStorage.removeItem('upSystemAuth');
+    sessionStorage.removeItem('upSystemRole');
+  };
+
+  // Check if user is manager
+  const isManager = userRole === 'manager';
 
   // Setup state
   const [isLoading, setIsLoading] = useState(true);
@@ -242,7 +271,7 @@ export default function UpSystem() {
   // Remove a rep from the schedule entirely
   const removeRep = async (repId) => {
     const rep = reps.find(r => r.id === repId);
-    if (!window.confirm(`Remove ${rep?.name} from today's schedule?`)) return;
+    if (!window.confirm(`Are you sure you want to remove ${rep?.name} from today's schedule?\n\nThis action cannot be undone.`)) return;
     
     const newReps = reps.filter(r => r.id !== repId);
     const newQueue = queue.filter(id => id !== repId);
@@ -791,11 +820,29 @@ export default function UpSystem() {
         </div>
         <div style={styles.headerRight}>
           <div style={styles.clock}>{formatTime(currentTime)}</div>
-          <button onClick={resetSystem} style={styles.resetButton}>
-            Reset
+          <div style={{
+            ...styles.roleBadge,
+            ...(isManager ? styles.roleBadgeManager : styles.roleBadgeViewer)
+          }}>
+            {isManager ? '★ Manager' : 'Viewer'}
+          </div>
+          {isManager && (
+            <button onClick={resetSystem} style={styles.resetButton}>
+              Reset
+            </button>
+          )}
+          <button onClick={handleLogout} style={styles.logoutButton}>
+            Logout
           </button>
         </div>
       </div>
+
+      {/* Last Activity */}
+      {history.length > 0 && (
+        <div style={styles.lastActivity}>
+          Last: {history[0].repName} {formatAction(history[0].action).toLowerCase()} · {formatTime(history[0].timestamp)}
+        </div>
+      )}
 
       {/* Who's Up Banner */}
       {upRep && (
@@ -925,13 +972,15 @@ export default function UpSystem() {
               <AddRepForm onAdd={addNewRep} />
             </div>
 
-            {/* Clear Day Button */}
-            <div style={styles.clearDaySection}>
-              <button onClick={clearDay} style={styles.clearDayButton}>
-                Clear Day
-              </button>
-              <p style={styles.clearDayHint}>Reset all check-ins and start fresh</p>
-            </div>
+            {/* Clear Day Button - Manager Only */}
+            {isManager && (
+              <div style={styles.clearDaySection}>
+                <button onClick={clearDay} style={styles.clearDayButton}>
+                  Clear Day
+                </button>
+                <p style={styles.clearDayHint}>Reset all check-ins and start fresh</p>
+              </div>
+            )}
             
             {/* Change Store */}
             <div style={styles.changeStoreSection}>
@@ -981,7 +1030,7 @@ export default function UpSystem() {
                   <div style={styles.queueList}>
                     <div style={styles.queueSectionHeader}>
                       <div style={styles.queueSectionTitle}>In Queue</div>
-                      <div style={styles.queueDragHint}>↕ Hold & drag to reorder</div>
+                      {isManager && <div style={styles.queueDragHint}>↕ Hold & drag to reorder</div>}
                     </div>
                     {activeQueue.map((repId, index) => {
                       const rep = reps.find(r => r.id === repId);
@@ -993,25 +1042,25 @@ export default function UpSystem() {
                         <div 
                           key={repId}
                           ref={(el) => queueItemRefs.current[index] = el}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, index, repId)}
-                          onDragEnter={(e) => handleDragEnter(e, index)}
-                          onDragOver={handleDragOver}
-                          onDragLeave={handleDragLeave}
-                          onDragEnd={handleDragEnd}
-                          onDrop={(e) => handleDrop(e, index)}
-                          onTouchStart={(e) => handleTouchStart(e, index, repId)}
-                          onTouchMove={(e) => handleTouchMove(e, index)}
-                          onTouchEnd={handleTouchEnd}
+                          draggable={isManager}
+                          onDragStart={isManager ? (e) => handleDragStart(e, index, repId) : undefined}
+                          onDragEnter={isManager ? (e) => handleDragEnter(e, index) : undefined}
+                          onDragOver={isManager ? handleDragOver : undefined}
+                          onDragLeave={isManager ? handleDragLeave : undefined}
+                          onDragEnd={isManager ? handleDragEnd : undefined}
+                          onDrop={isManager ? (e) => handleDrop(e, index) : undefined}
+                          onTouchStart={isManager ? (e) => handleTouchStart(e, index, repId) : undefined}
+                          onTouchMove={isManager ? (e) => handleTouchMove(e, index) : undefined}
+                          onTouchEnd={isManager ? handleTouchEnd : undefined}
                           style={{
                             ...styles.queueItem,
                             ...(isFirst ? styles.queueItemUp : {}),
                             ...(isDragging ? styles.queueItemDragging : {}),
                             ...(isDragOver && !isDragging ? styles.queueItemDragOver : {}),
-                            cursor: 'grab'
+                            cursor: isManager ? 'grab' : 'default'
                           }}
                         >
-                          <div style={styles.dragHandle}>⋮⋮</div>
+                          {isManager && <div style={styles.dragHandle}>⋮⋮</div>}
                           <div style={styles.queuePosition}>{index + 1}</div>
                           <div style={{
                             ...styles.queueAvatar,
@@ -1502,6 +1551,8 @@ const styles = {
     alignItems: 'center',
     padding: '1rem 1.5rem',
     borderBottom: '1px solid rgba(255,255,255,0.05)',
+    flexWrap: 'wrap',
+    gap: '0.5rem',
   },
   headerLeft: {
     display: 'flex',
@@ -1524,7 +1575,8 @@ const styles = {
   headerRight: {
     display: 'flex',
     alignItems: 'center',
-    gap: '1rem',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
   },
   clock: {
     fontSize: '0.875rem',
@@ -1539,6 +1591,41 @@ const styles = {
     color: '#ef4444',
     fontSize: '0.75rem',
     cursor: 'pointer',
+  },
+  roleBadge: {
+    padding: '0.25rem 0.625rem',
+    borderRadius: '12px',
+    fontSize: '0.6875rem',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+  },
+  roleBadgeManager: {
+    background: 'rgba(234, 179, 8, 0.15)',
+    color: '#eab308',
+    border: '1px solid rgba(234, 179, 8, 0.3)',
+  },
+  roleBadgeViewer: {
+    background: 'rgba(100, 116, 139, 0.15)',
+    color: '#94a3b8',
+    border: '1px solid rgba(100, 116, 139, 0.3)',
+  },
+  logoutButton: {
+    padding: '0.5rem 0.75rem',
+    background: 'transparent',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '8px',
+    color: '#64748b',
+    fontSize: '0.75rem',
+    cursor: 'pointer',
+  },
+  lastActivity: {
+    padding: '0.5rem 1.5rem',
+    background: 'rgba(255,255,255,0.02)',
+    borderBottom: '1px solid rgba(255,255,255,0.05)',
+    fontSize: '0.75rem',
+    color: '#64748b',
+    textAlign: 'center',
   },
   
   upBanner: {
